@@ -1,0 +1,13 @@
+certifi==2025.1.31
+charset-normalizer==3.4.1
+gensim==3.8.2
+idna==3.10
+numpy==1.26.4
+pip==22.0.4
+requests==2.32.3
+scipy==1.10.1
+setuptools==58.1.0
+six==1.17.0
+smart-open==7.1.0
+urllib3==2.3.0
+wrapt==1.17.2
