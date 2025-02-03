@@ -1,10 +1,12 @@
 import requests
 import random
-import os
 from gensim.summarization.summarizer import summarize
+from dotenv import load_dotenv
+import os
 
-# Perplexity API configuration
-API_KEY = os.getenv("PERPLEXITY_API_KEY")  # Fetch the API key from an environment variable
+# Load environment variables from .env file
+load_dotenv()
+API_KEY = os.getenv("PERPLEXITY_API_KEY")
 PERPLEXITY_URL = "https://api.perplexity.ai/chat/completions"
 
 def fetch_info_from_perplexity(topic, num_points):
@@ -13,7 +15,7 @@ def fetch_info_from_perplexity(topic, num_points):
         "model": "sonar",
         "messages": [
             {"role": "system", "content": "Be precise and concise."},
-            {"role": "user", "content": f"Provide {num_points} concise points about {topic}."}
+            {"role": "user", "content": f"Provide 300 word essay about {topic}."}
         ],
         "max_tokens": 300,
         "temperature": 0.2,
@@ -34,9 +36,9 @@ def fetch_info_from_perplexity(topic, num_points):
     else:
         return "Error fetching data from Perplexity API."
 
-def generate_summary_from_text(text, num_points):
-    """Generate a summary from the given text."""
-    summary = summarize(text, word_count=num_points * 15)  # Approx. 20 words per point
+def generate_summary(text, num_points):
+    """Generate a summary with the specified number of short points"""
+    summary = summarize(text, word_count=num_points * 15)  # Approx. 15 words per point
     points = summary.split("\n")  # Split into bullet points
     
     # Ensure we have at least 5 points, if fewer we repeat/modify the points
@@ -50,20 +52,19 @@ def main():
     
     # Randomly choose between 5 to 7 points
     num_points = random.randint(5, 7)
-    
-    # Check if input seems to be a topic (short length)
+
     if len(user_input.split()) < 5:  # Assume it's a topic if it's short
         print("Fetching details from Perplexity API...")
         text = fetch_info_from_perplexity(user_input, num_points)
     else:
         text = user_input  # Directly use the input text
     
-    # Generate summary points based on the content
-    summary_points = generate_summary_from_text(text, num_points)
+    summary_points = generate_summary(text, num_points)
     
     print("\nGenerated Infographic Points:")
     for i, point in enumerate(summary_points, start=1):
-        print(f"{i}. {point}")
+        print(f"{point}")
 
 if __name__ == "__main__":
     main()
+
