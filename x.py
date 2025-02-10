@@ -57,6 +57,7 @@ def fetch_info_from_perplexity(topic, num_points):
         return "Error: Unexpected response format."
     
     return "Error fetching data from Perplexity API."
+
 def preprocess_text(text):
     """Cleans text before processing (removes extra spaces, but keeps formatting)."""
     return re.sub(r'\s+', ' ', text).strip()
