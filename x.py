@@ -14,7 +14,7 @@ PERPLEXITY_URL = "https://api.perplexity.ai/chat/completions"
 # Initialize FastAPI app
 app = FastAPI()
 
-def fetch_info_from_perplexity(topic, num_points):
+def fetch_info_perplexity(topic, num_points):
     """Fetch information using Perplexity AI API with structured output and error handling."""
     payload = {
         "model": "sonar",
@@ -36,8 +36,8 @@ def fetch_info_from_perplexity(topic, num_points):
 
     response = requests.post(PERPLEXITY_URL, json=payload, headers=headers)
 
-  #  print(f"API Response Code: {response.status_code}")  # Debugging
-   # print("Full API Response JSON:", response.json())  # Print full response
+    print(f"API Response Code: {response.status_code}")  # Debugging
+    print("Full API Response JSON:", response.json())  # Print full response
 
     if response.status_code == 200:
         response_json = response.json()
@@ -57,6 +57,7 @@ def fetch_info_from_perplexity(topic, num_points):
         return "Error: Unexpected response format."
     
     return "Error fetching data from Perplexity API."
+
 
 def preprocess_text(text):
     """Cleans text before processing (removes extra spaces, but keeps formatting)."""
@@ -121,7 +122,7 @@ async def generate_summary_endpoint(topic: str = None, text: str = None):
     num_points = random.randint(5, 8)  # Generate 5-8 points randomly
 
     if topic:
-        text = fetch_info_from_perplexity(topic, num_points)
+        text = fetch_info_perplexity(topic, num_points)
     
     summary_points = generate_summary(text, num_points)
     
