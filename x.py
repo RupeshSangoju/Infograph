@@ -1,129 +1,110 @@
 from fastapi import FastAPI, HTTPException
 import requests
-import random
-import re
 import os
-from gensim.summarization.summarizer import summarize
+from transformers import BartTokenizer, BartForConditionalGeneration
 from dotenv import load_dotenv
+import random  
 
 # Load environment variables from .env file
 load_dotenv()
 API_KEY = os.getenv("PERPLEXITY_API_KEY")
 PERPLEXITY_URL = "https://api.perplexity.ai/chat/completions"
 
+# Load BART model and tokenizer
+model_name = "facebook/bart-large-cnn"
+tokenizer = BartTokenizer.from_pretrained(model_name)
+model = BartForConditionalGeneration.from_pretrained(model_name)
+
 # Initialize FastAPI app
 app = FastAPI()
+num_points = random.randint(4, 8)
 
 def fetch_info_perplexity(topic, num_points):
-    """Fetch information using Perplexity AI API with structured output and error handling."""
+    """Fetch structured information with headings using Perplexity AI API."""
     payload = {
         "model": "sonar",
         "messages": [
             {"role": "system", "content": "Provide an informative and structured response."},
             {"role": "user", "content": f"List {num_points} key facts about {topic}. Each fact should be in a separate line and no more than 20 words long."}
         ],
-        "max_tokens": 400,  # Reduce to prevent truncation
+        "max_tokens": 400,
         "temperature": 0.3,
         "top_p": 0.9,
         "return_images": False,
         "return_related_questions": False
     }
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     response = requests.post(PERPLEXITY_URL, json=payload, headers=headers)
-
-    print(f"API Response Code: {response.status_code}")  # Debugging
-    print("Full API Response JSON:", response.json())  # Print full response
 
     if response.status_code == 200:
         response_json = response.json()
-        
-        # Try extracting content
         choices = response_json.get("choices", [{}])
         if choices:
             content = choices[0].get("message", {}).get("content", "").strip()
             delta_content = choices[0].get("delta", {}).get("content", "").strip()
-            final_content = content if content else delta_content  # Prioritize content
-
-            if not final_content:
-                return "Error: Perplexity returned an empty response. Try a different query or check API permissions."
+            raw_text = content if content else delta_content
             
-            return final_content
+            # Ensure each fact is in a new line
+            points = raw_text.split("\n")
+            if len(points) < num_points:
+                points = raw_text.split(". ")  # Fallback if new lines are missing
+            
+            # Generate a heading for each point
+            headings_payload = {
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "Generate a short heading (2-3 words) for each fact listed below."},
+                    {"role": "user", "content": "\n".join(points)}
+                ],
+                "max_tokens": 100,
+                "temperature": 0.3,
+                "top_p": 0.9
+            }
+            
+            headings_response = requests.post(PERPLEXITY_URL, json=headings_payload, headers=headers)
+            if headings_response.status_code == 200:
+                headings_json = headings_response.json()
+                headings_content = headings_json.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                headings = headings_content.split("\n")
+            else:
+                headings = [f"Point {i+1}" for i in range(len(points))]  # Fallback generic headings
+            
+            formatted_output = "\n".join([f"**{headings[i].strip()}**\n• {points[i].strip()}" for i in range(min(len(points), len(headings)))])
+            return formatted_output
 
         return "Error: Unexpected response format."
     
     return "Error fetching data from Perplexity API."
 
 
-def preprocess_text(text):
-    """Cleans text before processing (removes extra spaces, but keeps formatting)."""
-    return re.sub(r'\s+', ' ', text).strip()
 
-def generate_summary(text, num_points):
-    """Generate a summary with unique points."""
-    try:
-        text = preprocess_text(text)  # Clean text before summarization
-        
-        if text.count('.') < 2:
-            print("Text lacks proper sentence structure. Using fallback method.")
-            summary = [' '.join(text.split()[:num_points * 15])]  # Take first X words
-            return remove_duplicates(summary)  # Ensure unique points
+def summarize_into_points(text, num_points=random.randint(4, 8)):
+    """Summarize text into bullet points using BART."""
+    inputs = tokenizer.encode("summarize: " + text, return_tensors="pt", max_length=1024, truncation=True)
+    summary_ids = model.generate(inputs, max_length=200, min_length=50, length_penalty=2.0)
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
-        print(f"Summarizing the text: {text[:200]}...")  # Log first 200 characters
-        
-        summary = summarize(text, word_count=num_points * 15)  # Gensim summarization
+    # Split by new lines or periods to ensure proper point separation
+    summary_points = summary.split("\n")
+    if len(summary_points) < num_points:
+        summary_points = summary.split(". ")
 
-        if not summary.strip():
-            print("Summarization failed. Using alternative method.")
-            summary = ' '.join(text.split()[:num_points * 15])  # Fallback
-
-        points = summary.split("\n")
-
-        unique_points = remove_duplicates(points)  # Ensure unique summary points
-
-        if len(unique_points) < num_points:
-            additional_points = text.split(". ")  # Split by sentence
-            for point in additional_points:
-                if point not in unique_points and len(unique_points) < num_points:
-                    unique_points.append(point.strip())
-
-        return unique_points[:num_points]  # Return exactly `num_points` unique points
+    # Limit to the required number of points and ensure new lines
+    summary_points = summary_points[:num_points]
+    formatted_summary = "\n".join([f"• {point.strip()}" for point in summary_points if point.strip()])
     
-    except Exception as e:
-        print(f"Error while generating summary: {e}")
-        return ["Error generating summary."]
+    return formatted_summary
 
-def remove_duplicates(summary_list):
-    """Removes duplicate summary points while preserving order and keeping hyphens in years."""
-    seen = set()
-    unique_summary = []
-    
-    for point in summary_list:
-        # Normalize text but KEEP hyphens between digits (e.g., 2019-20)
-        normalized_point = re.sub(r'(\d{4})-(\d{2})', r'\1-\2', point.strip().lower())  # Preserve year format
-        normalized_point = re.sub(r'\s+', ' ', normalized_point)  # Normalize spaces
-
-        if normalized_point not in seen:
-            seen.add(normalized_point)
-            unique_summary.append(point)  # Append original text
-    
-    return unique_summary
 
 @app.get("/generate_summary/")
 async def generate_summary_endpoint(topic: str = None, text: str = None):
-    """FastAPI endpoint to generate a summary based on input."""
+    """FastAPI endpoint to summarize a topic or given text."""
     if not topic and not text:
         raise HTTPException(status_code=400, detail="Either 'topic' or 'text' must be provided.")
     
-    num_points = random.randint(5, 8)  # Generate 5-8 points randomly
-
     if topic:
         text = fetch_info_perplexity(topic, num_points)
     
-    summary_points = generate_summary(text, num_points)
-    
-    return {"summary_points": summary_points}
+    summary = summarize_into_points(text, num_points)
+    return {"summary": summary}
