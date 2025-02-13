@@ -11,3 +11,4 @@ six==1.17.0
 smart-open==7.1.0
 urllib3==2.3.0
 wrapt==1.17.2
+uvicorn
